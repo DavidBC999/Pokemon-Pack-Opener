@@ -931,6 +931,48 @@
             display: none;
             white-space: nowrap;
         }
+
+        /* Sync Hub Specifics */
+        .sync-input {
+            width: 100%;
+            box-sizing: border-box;
+            padding: 14px;
+            margin-bottom: 10px;
+            border-radius: 12px;
+            border: 1px solid rgba(255,255,255,0.1);
+            background: rgba(0,0,0,0.4);
+            color: #fff;
+            font-family: 'Outfit', sans-serif;
+            font-size: 1rem;
+            outline: none;
+            transition: border-color 0.3s;
+        }
+
+        .sync-input:focus {
+            border-color: var(--primary);
+        }
+
+        .sync-status-box {
+            background: rgba(34, 197, 94, 0.1);
+            border: 1px solid rgba(34, 197, 94, 0.3);
+            padding: 15px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .sync-code-display {
+            font-size: 1.2rem;
+            font-weight: bold;
+            color: var(--primary);
+            letter-spacing: 1px;
+            margin: 10px 0;
+            padding: 10px;
+            background: rgba(0,0,0,0.3);
+            border-radius: 8px;
+            border: 1px dashed rgba(255,255,255,0.2);
+            cursor: pointer;
+        }
     </style>
 </head>
 
@@ -1047,6 +1089,36 @@
                 style="width: 100%; box-sizing: border-box; padding: 10px; margin-bottom: 20px; font-size: 1.2rem; text-align: center; border-radius: 10px; border: 1px solid rgba(255,255,255,0.2); outline: none; background: rgba(0,0,0,0.5); color: #fff;">
             <button id="submitGradeBtn" style="width: 100%; margin-bottom: 10px;">Submit Guess</button>
             <button id="cancelGradeBtn" style="width: 100%; background: #ef4444;">Cancel</button>
+        </div>
+    </div>
+
+    <div class="stats-screen" id="syncModal">
+        <div class="stats-card">
+            <h2>Cloud Sync Hub</h2>
+            <p style="color: #94a3b8; font-size: 0.9rem; margin-bottom: 20px; text-align: center;">Sync your progress across all your devices instantly.</p>
+            
+            <div id="syncActiveArea" style="display: none;">
+                <div class="sync-status-box">
+                    <div style="font-weight: bold; color: #22c55e; margin-bottom: 5px;">✓ Sync Active</div>
+                    <div style="font-size: 0.85rem; color: #94a3b8;">Your unique Sync Code:</div>
+                    <div id="modalSyncId" class="sync-code-display" title="Click to copy">...</div>
+                    <p style="font-size: 0.75rem; color: #64748b;">Share this code with your other devices.</p>
+                </div>
+                <button id="unlinkSyncBtn" style="width: 100%; background: rgba(239, 68, 68, 0.1); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.2); margin-bottom: 20px;">Unlink this device</button>
+            </div>
+
+            <div id="syncSetupArea">
+                <button id="generateBtn" style="width: 100%; margin-bottom: 30px;">Generate New Sync Code</button>
+                
+                <div style="height: 1px; background: rgba(255,255,255,0.1); margin-bottom: 30px; position: relative;">
+                    <span style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #1e293b; padding: 0 15px; color: #64748b; font-size: 0.8rem;">OR JOIN EXISTING</span>
+                </div>
+
+                <input type="text" id="joinIdInput" class="sync-input" placeholder="Enter existing Sync Code...">
+                <button id="joinBtn" style="width: 100%; background: linear-gradient(135deg, #3b82f6, #2563eb);">Join & Transfer Data</button>
+            </div>
+
+            <button id="closeSyncBtn" style="width: 100%; margin-top: 20px; background: rgba(255,255,255,0.1); color: #fff;">Close</button>
         </div>
     </div>
 
@@ -1221,34 +1293,75 @@
             return `${adjectives[Math.floor(Math.random()*adjectives.length)]}-${pokes[Math.floor(Math.random()*pokes.length)]}-${rand}`;
         }
 
-        document.getElementById('syncBtn').addEventListener('click', async () => {
-            if (!currentSyncId) {
-                const mode = confirm("Generate a new Sync Code to save your data to the cloud?\n\n(Choose 'Cancel' if you already have a code from another device)");
-                if (mode) {
-                    currentSyncId = generateSyncId();
-                    localStorage.setItem('pkmn_sync_id', currentSyncId);
-                    updateSyncUI();
-                    await pushToCloud();
-                    alert(`Your Sync Code is: ${currentSyncId}\n\nWrite this down! Enter it on any other device to load your progress.`);
-                } else {
-                    const id = prompt("Enter your Sync Code from your other device:");
-                    if (id) pullFromCloud(id.trim());
-                }
+        document.getElementById('syncBtn').addEventListener('click', () => {
+            document.getElementById('syncModal').style.display = 'flex';
+            refreshSyncModal();
+        });
+
+        document.getElementById('closeSyncBtn').addEventListener('click', () => {
+            document.getElementById('syncModal').style.display = 'none';
+        });
+
+        function refreshSyncModal() {
+            const activeArea = document.getElementById('syncActiveArea');
+            const setupArea = document.getElementById('syncSetupArea');
+            if (currentSyncId) {
+                activeArea.style.display = 'block';
+                setupArea.style.display = 'none';
+                document.getElementById('modalSyncId').innerText = currentSyncId;
             } else {
-                const choice = confirm(`You are already syncing with Code: ${currentSyncId}\n\nClick 'OK' to force a cloud backup now.\nClick 'Cancel' to log in with a DIFFERENT code.`);
-                if (choice) {
-                    await pushToCloud();
-                    alert("Backup complete!");
-                } else {
-                    const id = prompt("Enter a DIFFERENT Sync Code:");
-                    if (id) pullFromCloud(id.trim());
-                }
+                activeArea.style.display = 'none';
+                setupArea.style.display = 'block';
+            }
+        }
+
+        document.getElementById('generateBtn').addEventListener('click', async () => {
+            const btn = document.getElementById('generateBtn');
+            btn.innerText = "Generating...";
+            btn.disabled = true;
+            
+            currentSyncId = generateSyncId();
+            localStorage.setItem('pkmn_sync_id', currentSyncId);
+            
+            await pushToCloud();
+            
+            btn.innerText = "Generate New Sync Code";
+            btn.disabled = false;
+            
+            refreshSyncModal();
+            updateSyncUI();
+            alert("Success! Your progress is now linked to: " + currentSyncId);
+        });
+
+        document.getElementById('joinBtn').addEventListener('click', async () => {
+            const id = document.getElementById('joinIdInput').value.trim();
+            if (!id) return alert("Please enter a Sync Code first.");
+            
+            const btn = document.getElementById('joinBtn');
+            const originalText = btn.innerText;
+            btn.innerText = "Syncing...";
+            btn.disabled = true;
+            
+            await pullFromCloud(id);
+            
+            btn.innerText = originalText;
+            btn.disabled = false;
+            
+            refreshSyncModal();
+        });
+
+        document.getElementById('unlinkSyncBtn').addEventListener('click', () => {
+            if (confirm("Stop syncing to the cloud on this device? (Your local data remains safe)")) {
+                currentSyncId = null;
+                localStorage.removeItem('pkmn_sync_id');
+                document.getElementById('syncStatus').style.display = 'none';
+                refreshSyncModal();
             }
         });
 
-        document.getElementById('displaySyncId').addEventListener('click', () => {
+        document.getElementById('modalSyncId').addEventListener('click', () => {
             navigator.clipboard.writeText(currentSyncId);
-            alert("Sync Code copied to clipboard!");
+            alert("Code copied!");
         });
 
         function saveProgress() {
